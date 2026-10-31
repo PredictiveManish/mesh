@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mesh — know what your GPUs can actually train</title>
+<meta name="description" content="Scan a fleet of consumer GPUs and get the real ceiling: the largest model that fits on one node, the throughput of the fleet, and the time to finish.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0c0b09; --ink-2:#14120d; --ink-3:#1c1913;
+  --paper:#f3efe6; --paper-2:#e7e1d3; --paper-3:#d9d1bf;
+  --on-ink:#ece6d9; --on-ink-dim:#9c9484; --on-ink-faint:#6d6659;
+  --text:#14120d; --dim:#6b6559; --faint:#8f8879;
+  --accent:#c0512a; --accent-lt:#e08a5f;
+  --signal:#3f8462;
+  --rule:rgba(12,11,9,.14); --rule-soft:rgba(12,11,9,.07);
+  --rule-ink:rgba(236,230,217,.13);
+  --serif:'Instrument Serif',Georgia,serif;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- nav ---------- */
+nav{position:sticky;top:0;z-index:50;background:rgba(12,11,9,.92);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--rule-ink)}
+.nav-in{max-width:1180px;margin:0 auto;padding:0 28px;height:58px;
+  display:flex;align-items:center;gap:32px}
+.logo{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--on-ink);
+  letter-spacing:.16em;text-decoration:none}
+.logo b{color:var(--accent-lt);font-weight:600}
+.nav-links{display:flex;gap:26px;margin-left:auto}
+.nav-links a{color:var(--on-ink-dim);text-decoration:none;font-size:13px;
+  font-family:var(--mono);letter-spacing:.04em;transition:color .15s}
+.nav-links a:hover{color:var(--on-ink)}
+.nav-cta{font-family:var(--mono);font-size:12px;letter-spacing:.06em;
+  color:var(--ink);background:var(--on-ink);padding:7px 14px;border-radius:3px;
+  text-decoration:none;transition:.15s}
+.nav-cta:hover{background:var(--accent-lt);color:var(--ink)}
+
+/* ---------- hero ---------- */
+.hero{background:var(--ink);color:var(--on-ink);position:relative;overflow:hidden;
+  border-bottom:1px solid var(--rule-ink)}
+.hero::before{content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(900px 420px at 78% 8%,rgba(192,81,42,.20),transparent 62%),
+    radial-gradient(700px 400px at 8% 92%,rgba(63,132,98,.10),transparent 60%);
+  pointer-events:none}
+.hero::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--rule-ink) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--rule-ink) 1px,transparent 1px);
+  background-size:72px 72px;opacity:.35;
+  mask-image:radial-gradient(circle at 50% 30%,black,transparent 78%)}
+.hero-in{position:relative;z-index:1;padding:78px 0 84px;
+  display:grid;grid-template-columns:1.02fr .98fr;gap:64px;align-items:center}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--accent-lt);margin-bottom:22px;
+  display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:'';width:26px;height:1px;background:var(--accent-lt)}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(38px,5vw,66px);
+  line-height:.99;letter-spacing:-.02em;margin-bottom:24px}
+h1 em{font-style:italic;color:var(--accent-lt)}
+.hero p{color:var(--on-ink-dim);font-size:15.5px;max-width:44ch;margin-bottom:30px}
+.hero p b{color:var(--on-ink);font-weight:500}
+.install{display:flex;align-items:center;gap:0;max-width:390px;
+  border:1px solid var(--rule-ink);border-radius:4px;background:rgba(0,0,0,.35);
+  font-family:var(--mono);font-size:13px;overflow:hidden}
+.install .prompt{color:var(--accent-lt);padding:11px 0 11px 14px;user-select:none}
+.install code{flex:1;padding:11px 12px;color:var(--on-ink);white-space:nowrap;
+  overflow-x:auto;scrollbar-width:none}
+.install code::-webkit-scrollbar{display:none}
+.copy{background:none;border:none;border-left:1px solid var(--rule-ink);
+  color:var(--on-ink-faint);font-family:var(--mono);font-size:10px;
+  letter-spacing:.12em;text-transform:uppercase;padding:0 14px;height:42px;
+  cursor:pointer;transition:.15s}
+.copy:hover{color:var(--on-ink);background:rgba(255,255,255,.05)}
+.hero-links{display:flex;gap:18px;margin-top:20px;font-family:var(--mono);font-size:12px}
+.hero-links a{color:var(--on-ink-dim);text-decoration:none;
+  border-bottom:1px solid var(--rule-ink);padding-bottom:2px;transition:.15s}
+.hero-links a:hover{color:var(--on-ink);border-color:var(--accent-lt)}
+
+/* ---------- terminal ---------- */
+.term{background:#080705;border:1px solid var(--rule-ink);border-radius:6px;
+  box-shadow:0 28px 70px -28px rgba(0,0,0,.9),0 0 0 1px rgba(0,0,0,.5);
+  overflow:hidden}
+.term-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--rule-ink);background:rgba(255,255,255,.02)}
+.term-bar span{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--on-ink-faint)}
+.term pre{margin:0;padding:18px 18px 20px;font-family:var(--mono);font-size:11.5px;
+  line-height:1.72;color:var(--on-ink-dim);overflow-x:auto}
+.term .c{color:var(--on-ink)}
+.term .g{color:var(--signal)}
+.term .r{color:var(--accent-lt)}
+.term .d{color:var(--on-ink-faint)}
+.term .hl{color:var(--on-ink);background:rgba(192,81,42,.14);
+  border-left:2px solid var(--accent);padding-left:8px;margin-left:-10px;display:inline-block}
+
+/* ---------- sections ---------- */
+section{padding:84px 0}
+.section-label{font-family:var(--mono);font-size:11px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+h2{font-family:var(--serif);font-weight:400;font-size:clamp(30px,3.6vw,44px);
+  line-height:1.06;letter-spacing:-.015em;margin-bottom:18px;max-width:22ch}
+h2 em{font-style:italic;color:var(--accent)}
+.lead{font-size:16px;color:var(--dim);max-width:60ch;margin-bottom:44px}
+.lead b{color:var(--text);font-weight:500}
+
+/* ladder */
+.ladder{max-width:760px}
+.lrow{display:grid;grid-template-columns:150px 1fr 92px;align-items:center;
+  gap:20px;padding:13px 0;border-bottom:1px solid var(--rule-soft)}
+.lrow:last-child{border-bottom:none}
+.lname{font-family:var(--mono);font-size:13px;color:var(--dim)}
+.ltrack{height:22px;background:var(--paper-2);border-radius:2px;overflow:hidden}
+.lfill{height:100%;background:var(--accent);border-radius:2px;
+  transform-origin:left;animation:grow .9s cubic-bezier(.2,.7,.2,1) both}
+.lfill.zero{background:var(--paper-3);width:3px!important}
+.lcount{font-family:var(--mono);font-size:13px;text-align:right;color:var(--text)}
+.lcount small{color:var(--faint);font-size:11px}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:4px;
+  overflow:hidden;margin-top:46px}
+.fact{background:var(--paper);padding:24px 26px}
+.fact .n{font-family:var(--mono);font-size:30px;letter-spacing:-.03em;
+  line-height:1;margin-bottom:8px}
+.fact .n em{font-style:normal;color:var(--accent)}
+.fact .t{font-size:12.5px;color:var(--dim);line-height:1.5}
+
+/* commands */
+.cmds{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.cmd{background:var(--paper);border:1px solid var(--rule);border-radius:5px;
+  padding:24px 22px;transition:.2s}
+.cmd:hover{border-color:var(--accent);transform:translateY(-2px)}
+.cmd .num{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+  color:var(--accent);margin-bottom:14px}
+.cmd h3{font-size:15px;font-weight:600;margin-bottom:8px}
+.cmd p{font-size:13px;color:var(--dim);margin-bottom:16px;line-height:1.55}
+.cmd code{display:block;font-family:var(--mono);font-size:11.5px;color:var(--text);
+  background:var(--paper-2);padding:9px 11px;border-radius:3px;overflow-x:auto;
+  white-space:nowrap}
+
+/* screenshot */
+.shot{background:var(--ink);padding:0}
+.shot-in{padding:64px 0 72px}
+.shot h2{color:var(--on-ink)}
+.shot .lead{color:var(--on-ink-dim)}
+.shot .lead b{color:var(--on-ink)}
+.shot .section-label{color:var(--accent-lt)}
+.frame{border:1px solid var(--rule-ink);border-radius:8px;overflow:hidden;
+  box-shadow:0 40px 90px -40px rgba(0,0,0,.95)}
+.frame img{display:block;width:100%;height:auto}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);text-align:left;padding:0 16px 12px 0;
+  border-bottom:1px solid var(--rule);font-weight:500}
+td{padding:14px 16px 14px 0;border-bottom:1px solid var(--rule-soft);
+  vertical-align:top;color:var(--dim)}
+td:first-child{color:var(--text);font-weight:500;width:38%}
+tr:last-child td{border-bottom:none}
+.yes{color:var(--signal);font-family:var(--mono);font-size:12px}
+.no{color:var(--faint);font-family:var(--mono);font-size:12px}
+
+/* two col */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:64px}
+.two h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;margin-bottom:18px;color:var(--accent)}
+.two ul{list-style:none}
+.two li{padding:11px 0 11px 22px;border-bottom:1px solid var(--rule-soft);
+  font-size:14px;color:var(--dim);position:relative}
+.two li::before{content:'—';position:absolute;left:0;color:var(--faint);
+  font-family:var(--mono)}
+.two li b{color:var(--text);font-weight:500}
+
+/* cta */
+.cta{background:var(--ink);color:var(--on-ink);padding:76px 0;text-align:center;
+  border-top:1px solid var(--rule-ink)}
+.cta h2{color:var(--on-ink);margin:0 auto 18px;max-width:20ch}
+.cta p{color:var(--on-ink-dim);margin-bottom:30px}
+.cta .install{margin:0 auto}
+
+footer{background:var(--ink);border-top:1px solid var(--rule-ink);
+  color:var(--on-ink-faint);padding:36px 0 44px;font-size:12.5px}
+.foot-in{display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap}
+.foot-in a{color:var(--on-ink-dim);text-decoration:none}
+.foot-in a:hover{color:var(--on-ink)}
+
+@media (max-width:980px){
+  .hero-in{grid-template-columns:1fr;gap:44px;padding:56px 0 64px}
+  .cmds{grid-template-columns:1fr}
+  .facts{grid-template-columns:1fr}
+  .two{grid-template-columns:1fr;gap:40px}
+  .nav-links{display:none}
+  section{padding:60px 0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="logo" href="#">mesh<b>.</b></a>
+    <div class="nav-links">
+      <a href="#problem">Problem</a>
+      <a href="#commands">Commands</a>
+      <a href="#dashboard">Dashboard</a>
+      <a href="#status">Status</a>
+      <a href="https://github.com/PredictiveManish">GitHub ↗</a>
+    </div>
+    <a class="nav-cta" href="#install">Install</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <div class="eyebrow">Open source · Apache-2.0 · v0.1.0</div>
+      <h1>Your GPUs can train <em>less</em> than you think.</h1>
+      <p>mesh scans a fleet of consumer GPUs and reports the real ceiling — the
+         largest model that fits on <b>one</b> node, how fast the fleet runs it,
+         and how long it will take. Before you spend a month finding out.</p>
+      <div class="install" id="install">
+        <span class="prompt">$</span>
+        <code id="cmd">pipx install mesh-train</code>
+        <button class="copy" onclick="copyCmd(this)">copy</button>
+      </div>
+      <div class="hero-links">
+        <a href="#dashboard">See the dashboard</a>
+        <a href="https://github.com/PredictiveManish">Source</a>
+      </div>
+    </div>
+
+    <div class="term">
+      <div class="term-bar"><span>mesh scan --fleet 100</span></div>
+<pre><span class="c">  Simulated fleet · 100 nodes</span>
+  <span class="d">tiers: 4GB  6GB  8GB  16GB</span>
+  <span class="d">pooled VRAM: 646 GB</span>
+
+  <span class="c">Full fine-tune</span>       up to  0.80B params per node
+  <span class="c">QLoRA fine-tune</span>      up to 10.67B params per node
+
+  <span class="d">model                 params    full   QLoRA  nodes that fit</span>
+  <span class="d">------------------------------------------------------------</span>
+  Qwen2.5-0.5B            0.5B    <span class="g">yes</span>     <span class="g">yes</span>     100 / 100
+  Llama-3.2-1B            1.2B      <span class="d">—</span>     <span class="g">yes</span>     100 / 100
+  Qwen2.5-3B              3.0B      <span class="d">—</span>     <span class="g">yes</span>      60 / 100
+<span class="hl">  Mistral-7B              7.2B      <span class="d">—</span>     <span class="g">yes</span>       8 / 100</span>
+  Llama-3.1-8B            8.0B      <span class="d">—</span>     <span class="g">yes</span>       8 / 100
+
+  <span class="c">Largest full fine-tune that fits:</span>  Qwen2.5-0.5B
+  <span class="c">Largest QLoRA fine-tune that fits:</span> Llama-3.1-8B</pre>
+    </div>
+  </div>
+</header>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="section-label">01 — The memory wall</div>
+    <h2>Pooled VRAM is <em>fiction.</em></h2>
+    <p class="lead">A model has to fit on one node before it can be trained on
+      any of them. So the ceiling is set by your <b>largest single GPU</b>, not
+      by the sum of your fleet. Add a thousand more 4 GB laptops and you still
+      cannot hold a 7B model.</p>
+
+    <div class="ladder">
+      <div class="lrow"><div class="lname">Qwen2.5-0.5B</div>
+        <div class="ltrack"><div class="lfill" style="width:100%"></div></div>
+        <div class="lcount">100<small>/100</small></div></div>
+      <div class="lrow"><div class="lname">Llama-3.2-1B</div>
+        <div class="ltrack"><div class="lfill" style="width:100%;animation-delay:.06s"></div></div>
+        <div class="lcount">100<small>/100</small></div></div>
+      <div class="lrow"><div class="lname">Qwen2.5-3B</div>
+        <div class="ltrack"><div class="lfill" style="width:60%;animation-delay:.12s"></div></div>
+        <div class="lcount">60<small>/100</small></div></div>
+      <div class="lrow"><div class="lname">Mistral-7B</div>
+        <div class="ltrack"><div class="lfill" style="width:8%;animation-delay:.18s"></div></div>
+        <div class="lcount">8<small>/100</small></div></div>
+      <div class="lrow"><div class="lname">Llama-3.1-8B</div>
+        <div class="ltrack"><div class="lfill" style="width:8%;animation-delay:.24s"></div></div>
+        <div class="lcount">8<small>/100</small></div></div>
+    </div>
+
+    <div class="facts">
+      <div class="fact"><div class="n">646<em> GB</em></div>
+        <div class="t">pooled VRAM across 100 consumer GPUs</div></div>
+      <div class="fact"><div class="n"><em>8</em> of 100</div>
+        <div class="t">machines that can hold Mistral-7B for QLoRA</div></div>
+      <div class="fact"><div class="n"><em>0</em> of 100</div>
+        <div class="t">that can full-fine-tune a 1.2B model at 16 B/param</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="commands" style="background:var(--paper-2)">
+  <div class="wrap">
+    <div class="section-label">02 — Three commands</div>
+    <h2>Ask the fleet, don't guess at it.</h2>
+    <p class="lead">No cluster, no scheduler, no config file. Point mesh at the
+      machines you already have.</p>
+    <div class="cmds">
+      <div class="cmd"><div class="num">01</div><h3>scan</h3>
+        <p>Probes a machine or a whole fleet and reports what actually fits.</p>
+        <code>mesh scan --fleet 100</code></div>
+      <div class="cmd"><div class="num">02</div><h3>plan</h3>
+        <p>Placement, sync interval, throughput and ETA for one specific job.</p>
+        <code>mesh plan --params 7.2 --mode lora</code></div>
+      <div class="cmd"><div class="num">03</div><h3>up</h3>
+        <p>Coordinator and live dashboard in one command. Add real nodes with
+          <span class="mono">mesh agent</span>.</p>
+        <code>mesh up --demo</code></div>
+    </div>
+  </div>
+</section>
+
+<section class="shot" id="dashboard">
+  <div class="wrap shot-in">
+    <div class="section-label">03 — The dashboard</div>
+    <h2>Every machine, as the fleet sees it.</h2>
+    <p class="lead">Online now, active 24 h, pooled VRAM, a capacity ladder that
+      shows exactly where your fleet falls off, installs per day, the VRAM tier
+      mix, GPU inventory and city-level geography — <b>opt-in, coarse, and
+      never an IP address.</b></p>
+    <div class="frame"><img src="__SHOT__" alt="mesh fleet dashboard"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-label">04 — What it answers</div>
+    <h2>Questions that cost a week to answer badly.</h2>
+    <table>
+      <thead><tr><th>Question</th><th>With mesh</th><th>Typical answer today</th></tr></thead>
+      <tbody>
+        <tr><td>Largest model this fleet can hold</td>
+            <td class="yes">computed per node from the census</td>
+            <td>a guess, then a failed run</td></tr>
+        <tr><td>How many machines can run a 7B?</td>
+            <td class="yes">counted exactly</td>
+            <td>"we have 646 GB pooled"</td></tr>
+        <tr><td>How often should nodes synchronise?</td>
+            <td class="yes">auto-tuned so upload ≤ 20% of compute</td>
+            <td>a constant copied from a paper</td></tr>
+        <tr><td>How long until the run finishes?</td>
+            <td class="yes">ETA from measured throughput</td>
+            <td>unknown until it ends</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section style="background:var(--paper-2)">
+  <div class="wrap two">
+    <div>
+      <h3>Built for</h3>
+      <ul>
+        <li><b>Labs and universities</b> with a mixed bag of GPUs and no cluster team</li>
+        <li><b>Enterprises</b> with idle workstations and a data-residency rule that rules out offshore cloud</li>
+        <li><b>Anyone</b> deciding whether to rent an A100 or use what they already own</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Not built for</h3>
+      <ul>
+        <li><b>Frontier training.</b> A hundred mixed laptops are worth roughly one H100 of effective throughput — mesh will tell you that number too</li>
+        <li><b>Models larger than one node.</b> Pipeline parallelism is not built yet</li>
+        <li><b>Untrusted strangers.</b> Verification is a gate, not a proof</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="status">
+  <div class="wrap">
+    <div class="section-label">05 — Status</div>
+    <h2>What is real today.</h2>
+    <p class="lead">v0.1.0 is deliberately narrow: know what your fleet can
+      train, and prove it with a real run. Everything below is tested or
+      explicitly marked as missing.</p>
+    <table>
+      <thead><tr><th>Component</th><th>State</th></tr></thead>
+      <tbody>
+        <tr><td>Capacity planner · scan · plan · up · agent</td><td class="yes">works</td></tr>
+        <tr><td>Fleet registry, HTTP API, dashboard</td><td class="yes">works</td></tr>
+        <tr><td>DiLoCo training loop, int8 compression, churn-tolerant barrier</td><td class="yes">works — reference implementation</td></tr>
+        <tr><td>Robust aggregation (magnitude + consensus direction)</td><td class="yes">works — a gate, not a proof</td></tr>
+        <tr><td>Pipeline parallelism · signed node identity · WAN transport</td><td class="no">not built</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="cta">
+  <div class="wrap">
+    <h2>Find out what your fleet can do.</h2>
+    <p>Four seconds, no cluster, no account.</p>
+    <div class="install">
+      <span class="prompt">$</span>
+      <code>pipx install mesh-train && mesh scan</code>
+      <button class="copy" onclick="copyCmd(this)">copy</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>Apache-2.0 · built by Manish Tiwari · <a href="https://github.com/PredictiveManish">GitHub</a></div>
+    <div>Location is opt-in and city-level. No IP, hostname or hardware fingerprint is stored.</div>
+  </div>
+</footer>
+
+<script>
+function copyCmd(btn){
+  const txt = btn.parentElement.querySelector('code').textContent;
+  navigator.clipboard.writeText(txt).then(()=>{
+    const old = btn.textContent;
+    btn.textContent = 'copied';
+    setTimeout(()=>btn.textContent = old, 1400);
+  }).catch(()=>{});
+}
+</script>
+</body>
+</html>

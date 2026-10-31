@@ -1,0 +1,21 @@
+# docker compose up --build
+# dashboard: http://localhost:8080
+services:
+  coordinator:
+    build: .
+    ports: ["8080:8080"]
+    volumes: ["mesh-data:/data"]
+    environment:
+      # set a shared secret before exposing this beyond localhost
+      MESH_TOKEN: ""
+    restart: unless-stopped
+
+  # one-command demo with a synthetic fleet — comment out `coordinator`
+  # above and uncomment this if you just want to see the dashboard
+  # demo:
+  #   build: .
+  #   ports: ["8080:8080"]
+  #   command: ["mesh", "up", "--host", "0.0.0.0", "--demo", "--no-browser"]
+
+volumes:
+  mesh-data:

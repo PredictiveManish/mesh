@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mesh · fleet telemetry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f1ede5; --paper-2:#e8e3d8; --paper-3:#ddd6c8;
+  --ink:#17140f; --ink-2:#4b463c; --ink-3:#8a8272;
+  --rule:rgba(23,20,15,.18); --rule-soft:rgba(23,20,15,.09);
+  --accent:#a83c1d; --accent-soft:#e7d2c7;
+  --signal:#2f6b4f;
+  --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#13110d; --paper-2:#1c1913; --paper-3:#2c261d;
+    --ink:#ece6d9; --ink-2:#b0a898; --ink-3:#7b7466;
+    --rule:rgba(236,230,217,.18); --rule-soft:rgba(236,230,217,.08);
+    --accent:#d2663f; --accent-soft:#3b2218;
+    --signal:#63b98a;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:13px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.shell{max-width:1340px;margin:0 auto;padding:0 34px 72px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- masthead ---------- */
+.mast{display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:18px 0 14px;border-bottom:2px solid var(--ink);flex-wrap:wrap}
+.mast-l{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);
+  font-size:11px;letter-spacing:.22em;text-transform:uppercase}
+.brand{font-weight:600;letter-spacing:.3em}
+.mast-l .sep{color:var(--ink-3)}
+.mast-l .sub{color:var(--ink-3);letter-spacing:.18em}
+.mast-r{display:flex;align-items:center;gap:18px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.live{display:inline-flex;align-items:center;gap:7px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--signal);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--signal) 18%,transparent)}
+.live.stale i{background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.mast button{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  background:none;border:1px solid var(--rule);color:var(--ink-2);padding:5px 10px;cursor:pointer;
+  border-radius:2px;transition:.15s}
+.mast button:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* ---------- lede ---------- */
+.lede{padding:44px 0 30px;display:grid;grid-template-columns:1.45fr 1fr;gap:56px;align-items:end}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(34px,4.4vw,60px);
+  line-height:1.02;letter-spacing:-.015em;max-width:19ch}
+h1 em{font-style:italic;color:var(--accent)}
+h1 .n{font-variant-numeric:tabular-nums}
+.standfirst{font-size:13.5px;line-height:1.62;color:var(--ink-2);max-width:46ch;
+  border-left:2px solid var(--accent);padding-left:16px}
+.standfirst b{color:var(--ink);font-weight:600}
+
+/* ---------- stat band ---------- */
+.band{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--rule);
+  border-bottom:1px solid var(--rule);margin-bottom:44px}
+.stat{padding:18px 22px 16px;border-right:1px solid var(--rule-soft)}
+.stat:first-child{padding-left:0}
+.stat:last-child{border-right:none}
+.stat .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:7px}
+.stat .v{font-family:var(--mono);font-size:27px;font-weight:500;letter-spacing:-.03em;line-height:1}
+.stat .v small{font-size:12px;font-weight:400;color:var(--ink-3);letter-spacing:0;margin-left:3px}
+.stat .d{font-size:11px;color:var(--ink-3);margin-top:6px}
+
+/* ---------- sections ---------- */
+.sec{display:flex;align-items:baseline;gap:12px;padding-top:14px;
+  border-top:1px solid var(--ink);margin-bottom:18px}
+.sec .num{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--accent)}
+.sec .ttl{font-family:var(--mono);font-size:10.5px;letter-spacing:.19em;text-transform:uppercase;font-weight:500}
+.sec .hint{margin-left:auto;font-size:11px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.04em}
+.grid{display:grid;grid-template-columns:1.52fr 1fr;gap:52px;margin-bottom:46px}
+.grid.even{grid-template-columns:1fr 1fr}
+.col{display:flex;flex-direction:column;gap:46px;min-width:0}
+.block{min-width:0}
+
+/* ---------- ladder ---------- */
+.ladder{display:flex;flex-direction:column;gap:0}
+.row{display:grid;grid-template-columns:58px minmax(0,1fr) 88px;align-items:center;gap:16px;
+  padding:11px 0;border-bottom:1px solid var(--rule-soft)}
+.row:last-child{border-bottom:none}
+.row .sz{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);letter-spacing:-.02em}
+.row .track{height:26px;position:relative;display:flex;align-items:center;min-width:0}
+.row .bar{height:100%;background:var(--accent);border-radius:1px;
+  transition:width .9s cubic-bezier(.2,.7,.2,1)}
+.row .bar.zero{width:3px!important;background:var(--ink-3);height:10px;align-self:center}
+.row .val{font-family:var(--mono);font-size:14px;text-align:right;letter-spacing:-.02em;min-width:0;white-space:nowrap}
+.row .val small{display:block;font-size:9.5px;color:var(--ink-3);letter-spacing:.02em;margin-top:2px;white-space:nowrap}
+.row.dead .sz,.row.dead .val{color:var(--ink-3)}
+.ladder-note{margin-top:16px;font-size:11.5px;color:var(--ink-3);line-height:1.6;
+  border-top:1px solid var(--rule-soft);padding-top:12px}
+.ladder-note b{color:var(--ink-2);font-weight:500}
+
+/* ---------- map ---------- */
+.mapwrap{position:relative}
+.mapwrap svg{display:block;margin:0 auto;max-height:430px;width:auto;max-width:100%;overflow:visible}
+.map-key{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+.cities{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;margin-top:16px;
+  border-top:1px solid var(--rule-soft);padding-top:14px}
+.city{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  font-size:11.5px;padding:2px 0}
+.city span{color:var(--ink-2)}
+.city b{font-family:var(--mono);font-weight:500;font-size:11.5px}
+.city b em{font-style:normal;color:var(--ink-3);font-weight:400;font-size:10px;margin-left:5px}
+
+/* ---------- charts ---------- */
+.chart-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.chart-head .t{font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-3)}
+.chart-head .v{font-family:var(--mono);font-size:15px;letter-spacing:-.02em}
+.axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  color:var(--ink-3);letter-spacing:.06em;margin-top:7px}
+
+/* ---------- mix ---------- */
+.mixbar{display:flex;height:38px;border:1px solid var(--rule);overflow:hidden;border-radius:1px}
+.mixbar div{height:100%;transition:flex-grow .8s ease}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 22px;margin-top:14px}
+.leg{display:flex;align-items:center;gap:8px;font-size:11.5px}
+.leg i{width:9px;height:9px;border-radius:1px;flex:none}
+.leg span{color:var(--ink-2)}
+.leg b{margin-left:auto;font-family:var(--mono);font-weight:500;font-size:11.5px}
+
+/* ---------- tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:0 14px 9px 0;border-bottom:1px solid var(--rule);font-weight:500}
+thead th.r{text-align:right}
+tbody td{padding:7px 14px 7px 0;border-bottom:1px solid var(--rule-soft);vertical-align:baseline}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .12s}
+tbody tr:hover{background:var(--paper-2)}
+td.r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.mut{color:var(--ink-3)}
+td.name{font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.13em;text-transform:uppercase}
+.pill i{width:5px;height:5px;border-radius:50%;display:block}
+.pill.on{color:var(--signal)} .pill.on i{background:var(--signal)}
+.pill.busy{color:var(--accent)} .pill.busy i{background:var(--accent)}
+.pill.off{color:var(--ink-3)} .pill.off i{background:var(--ink-3)}
+.sharebar{display:inline-block;width:52px;height:4px;background:var(--rule-soft);
+  vertical-align:middle;margin-right:9px;overflow:hidden;border-radius:1px}
+.sharebar i{display:block;height:100%;background:var(--accent);opacity:.75}
+
+/* ---------- footer ---------- */
+footer{margin-top:52px;padding-top:16px;border-top:1px solid var(--rule);
+  display:grid;grid-template-columns:1fr 1fr;gap:40px;font-size:11px;color:var(--ink-3);line-height:1.65}
+footer b{color:var(--ink-2);font-weight:500}
+footer .r{text-align:right;font-family:var(--mono);letter-spacing:.04em}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.rise{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+@media (max-width:1080px){
+  .lede{grid-template-columns:1fr;gap:26px;padding:32px 0 24px}
+  .grid,.grid.even{grid-template-columns:1fr;gap:40px}
+  .band{grid-template-columns:repeat(2,1fr)}
+  .stat{border-right:none;border-bottom:1px solid var(--rule-soft)}
+  footer{grid-template-columns:1fr}
+  footer .r{text-align:left}
+}
+@media (max-width:640px){
+  .shell{padding:0 18px 48px}
+  .cities{grid-template-columns:1fr}
+  .row{grid-template-columns:48px 1fr 56px;gap:10px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="mast">
+  <div class="mast-l">
+    <span class="brand">MESH</span><span class="sep">/</span><span class="sub">Fleet telemetry</span>
+  </div>
+  <div class="mast-r">
+    <span class="live" id="live"><i></i><span id="liveTxt">snapshot</span></span>
+    <span id="clock">—</span>
+    <button onclick="load(true)">refresh</button>
+  </div>
+</div>
+
+<div class="lede rise">
+  <h1 id="headline"></h1>
+  <p class="standfirst" id="standfirst"></p>
+</div>
+
+<div class="band rise" style="animation-delay:.08s">
+  <div class="stat"><div class="k">Online now</div>
+    <div class="v" id="s-online">—</div><div class="d" id="s-online-d"></div></div>
+  <div class="stat"><div class="k">Active 24 h</div>
+    <div class="v" id="s-active">—</div><div class="d" id="s-active-d"></div></div>
+  <div class="stat"><div class="k">Installs</div>
+    <div class="v" id="s-installs">—</div><div class="d" id="s-installs-d"></div></div>
+  <div class="stat"><div class="k">Pooled VRAM</div>
+    <div class="v" id="s-vram">—</div><div class="d" id="s-vram-d"></div></div>
+  <div class="stat"><div class="k">Free storage</div>
+    <div class="v" id="s-disk">—</div><div class="d" id="s-disk-d"></div></div>
+</div>
+
+<div class="grid rise" style="animation-delay:.14s">
+  <div class="col">
+    <div class="block">
+      <div class="sec"><span class="num">01</span><span class="ttl">Capacity ceiling</span>
+        <span class="hint">full fine-tune, 16 B/param</span></div>
+      <div class="ladder" id="ladder"></div>
+      <div class="ladder-note" id="ladderNote"></div>
+    </div>
+    <div class="block">
+      <div class="sec"><span class="num">03</span><span class="ttl">Growth</span>
+        <span class="hint" id="growthHint">last 14 days</span></div>
+      <div class="chart-head"><span class="t">New installs per day</span>
+        <span class="v" id="growthTotal">—</span></div>
+      <svg id="growth" viewBox="0 0 640 180" style="width:100%;height:auto;display:block"></svg>
+      <div class="axis" id="growthAxis"></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="block">
+      <div class="sec"><span class="num">02</span><span class="ttl">Geography</span>
+        <span class="hint" id="geoHint">opt-in</span></div>
+      <div class="mapwrap">
+        <svg id="map" viewBox="0 0 1000 1019"></svg>
+        <div class="map-key"><span id="lonW">68°E</span><span>city-level only</span><span id="lonE">97°E</span></div>
+      </div>
+      <div class="cities" id="cities"></div>
+    </div>
+    <div class="block">
+      <div class="sec"><span class="num">04</span><span class="ttl">Hardware mix</span>
+        <span class="hint" id="mixHint"></span></div>
+      <div class="chart-head"><span class="t">Nodes by VRAM tier</span>
+        <span class="v" id="mixTotal">—</span></div>
+      <div class="mixbar" id="mixbar"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec"><span class="num">05</span><span class="ttl">GPU inventory</span>
+  <span class="hint">as reported by the driver</span></div>
+<table style="margin-bottom:44px">
+  <thead><tr><th>Model</th><th class="r">Nodes</th><th class="r">Online</th>
+    <th class="r">VRAM</th><th class="r">Share</th></tr></thead>
+  <tbody id="models"></tbody>
+</table>
+
+<div class="sec"><span class="num">06</span><span class="ttl">Recent installs</span>
+  <span class="hint" id="recentHint"></span></div>
+<table>
+  <thead><tr><th>Node</th><th>OS</th><th>GPU</th><th class="r">VRAM</th><th class="r">RAM</th>
+    <th class="r">Disk free</th><th>City</th><th class="r" style="padding-right:26px">Seen</th>
+    <th style="padding-left:6px">State</th></tr></thead>
+  <tbody id="nodes"></tbody>
+</table>
+
+<footer>
+  <div><b>Privacy.</b> Node IDs are random UUIDs, not hardware fingerprints. No email, hostname,
+    MAC or IP is stored. Location is opt-in, city-level and rounded to about 1 km — the fields are
+    absent entirely unless the user consents.</div>
+  <div class="r">Boundary follows the official Indian depiction (DataMeet composite,
+    simplified for display).<br><span id="stamp"></span></div>
+</footer>
+
+</div>
+
+<script>
+const SNAPSHOT = __SNAPSHOT__;
+const INDIA = __INDIA__;
+let DATA = SNAPSHOT, live = false;
+
+const f = n => (n===undefined||n===null||isNaN(n)) ? '—' : Number(n).toLocaleString('en-IN');
+const ago = s => s<60 ? Math.round(s)+'s' : s<3600 ? Math.round(s/60)+'m'
+              : s<86400 ? Math.round(s/3600)+'h' : Math.round(s/86400)+'d';
+const rate = n => n>=1e6 ? (n/1e6).toFixed(1)+'M tok/s'
+              : n>=1e3 ? Math.round(n/1e3)+'k tok/s' : Math.round(n)+' tok/s';
+
+const TIER_COLORS = ['#a83c1d','#c2683f','#d99662','#b9a882','#8a8272','#4b463c'];
+const tierColor = i => TIER_COLORS[Math.min(i, TIER_COLORS.length-1)];
+
+
+function render(d){
+  const t = d.stats.totals, p = d.stats.pooled, L = d.ladder || [];
+
+  // ---- headline: state the finding, don't decorate it
+  const ceiling = [...L].reverse().find(r => r.replicas > 0);
+  const vramTb = (p.vram_gb/1000).toFixed(1);
+  document.getElementById('headline').innerHTML = ceiling
+    ? `${f(t.installs)} machines.<br>${vramTb} TB of VRAM.<br>And only <em>${f(ceiling.replicas)}</em> can hold a ${ceiling.label} model.`
+    : `${f(t.installs)} machines.<br>${vramTb} TB of VRAM.<br>And <em>not one</em> can hold a model worth training.`;
+  document.getElementById('standfirst').innerHTML =
+    `Pooled memory is the fiction this page exists to kill. A model must fit on a <b>single node</b> before it can be trained on any of them, so the ceiling is set by the largest GPU in the fleet, not the sum of them. Adding machines raises throughput. It does not raise model size.`;
+
+  // ---- stat band
+  document.getElementById('s-online').textContent = f(t.online);
+  document.getElementById('s-active').textContent = f(t.active_24h);
+  document.getElementById('s-installs').textContent = f(t.installs);
+  document.getElementById('s-vram').innerHTML = f(p.vram_gb) + '<small>GB</small>';
+  document.getElementById('s-disk').innerHTML = p.disk_free_tb + '<small>TB</small>';
+  document.getElementById('s-online-d').textContent =
+    Math.round(100*t.online/Math.max(t.installs,1)) + '% of installs';
+  document.getElementById('s-active-d').textContent = f(t.new_7d) + ' new this week';
+  document.getElementById('s-installs-d').textContent = 'all time';
+  document.getElementById('s-vram-d').textContent = f(p.ram_gb) + ' GB system RAM';
+  document.getElementById('s-disk-d').textContent = 'across ' + f(t.installs) + ' devices';
+
+  // ---- capacity ladder
+  const lmax = Math.max(...L.map(r=>r.replicas), 1);
+  document.getElementById('ladder').innerHTML = L.map(r=>{
+    const dead = r.replicas === 0;
+    const w = dead ? 0 : Math.max(1.2, 100*r.replicas/lmax);
+    return `<div class="row ${dead?'dead':''}">
+      <div class="sz">${r.label}</div>
+      <div class="track"><div class="bar ${dead?'zero':''}" style="width:${w}%"></div></div>
+      <div class="val">${dead?'0':f(r.replicas)}
+        <small>${dead?'none fit':rate(r.tps)}</small></div>
+    </div>`;
+  }).join('');
+  const last = ceiling;
+  document.getElementById('ladderNote').innerHTML = last
+    ? `<b>${f(last.replicas)} of ${f(t.installs)}</b> nodes can host ${last.label} in full precision —
+       the rest fall below the 16-bytes-per-parameter floor and are better used for data prep or inference.`
+    : 'No node clears the memory floor for any model in the ladder.';
+
+  // ---- map
+  const cities = (d.stats.cities || []).filter(c=>c.lat!=null);
+  const P = INDIA.proj, cmax = Math.max(...cities.map(c=>c.count), 1);
+  const mx = lon => (lon-P.lon0)/(P.lon1-P.lon0)*P.W;
+  const my = lat => (P.lat1-lat)/(P.lat1-P.lat0)*P.H;
+  const land = INDIA.paths.map(p=>`<path d="${p}" fill="var(--paper-3)" stroke="var(--ink-3)"
+      stroke-width="3" stroke-linejoin="round" opacity=".75"/>`).join('');
+  const dots = cities.map(c=>{
+    const r = 9 + 20*Math.sqrt(c.count/cmax);
+    return `<circle cx="${mx(c.lon).toFixed(0)}" cy="${my(c.lat).toFixed(0)}" r="${r.toFixed(0)}"
+              fill="var(--accent)" opacity=".14"/>
+            <circle cx="${mx(c.lon).toFixed(0)}" cy="${my(c.lat).toFixed(0)}" r="7"
+              fill="var(--accent)"/>`;
+  }).join('');
+  // label the biggest cities: sort by screen y, push apart, leader line when moved
+  const ranked = cities.slice(0, 5);
+  const slots = ranked.map(c => ({c, x: mx(c.lon), y: my(c.lat)}))
+                       .sort((a, b) => a.y - b.y);
+  let lastY = -1e9;
+  const leaders = [], texts = [];
+  slots.forEach((sl, i) => {
+    const right = sl.x < P.W * 0.5;
+    let ly = Math.max(sl.y, lastY + 62);
+    lastY = ly;
+    const lx = sl.x + (right ? 42 : -42);
+    if (Math.abs(ly - sl.y) > 8 || true) {
+      leaders.push(`<line x1="${(sl.x + (right?16:-16)).toFixed(0)}" y1="${sl.y.toFixed(0)}"
+        x2="${(lx + (right?-10:10)).toFixed(0)}" y2="${ly.toFixed(0)}"
+        stroke="var(--ink-3)" stroke-width="1.5" opacity=".55"/>`);
+    }
+    texts.push(`<text x="${lx.toFixed(0)}" y="${(ly+9).toFixed(0)}" text-anchor="${right?'start':'end'}"
+      font-family="var(--mono)" font-size="30" fill="var(--ink-2)"
+      letter-spacing="1">${sl.c.city}</text>`);
+  });
+  const labels = leaders.join('') + texts.join('');
+  document.getElementById('map').innerHTML = land + dots + labels;
+  document.getElementById('lonW').textContent = Math.round(P.lon0) + '°E';
+  document.getElementById('lonE').textContent = Math.round(P.lon1) + '°E';
+  document.getElementById('geoHint').textContent =
+    `${t.consented_location}/${t.installs} consented`;
+  document.getElementById('cities').innerHTML = cities.slice(0,8).map(c=>`
+    <div class="city"><span>${c.city}</span>
+      <b>${c.count}<em>${c.online} on</em></b></div>`).join('');
+
+  // ---- growth
+  const dly = d.stats.daily_installs || [];
+  const W=640, H=180, padL=0, padB=26, padT=14;
+  const gmax = Math.max(...dly.map(x=>x.installs), 1);
+  const total = dly.reduce((a,x)=>a+x.installs,0);
+  document.getElementById('growthTotal').textContent = '+' + f(total);
+  document.getElementById('growthHint').textContent = dly.length + ' days';
+  const step = (W-padL)/Math.max(dly.length,1);
+  const pts = dly.map((x,i)=>{
+    const cx = padL + step*i + step/2;
+    const cy = H-padB - (H-padB-padT)*x.installs/gmax;
+    return [cx, cy];
+  });
+  const line = pts.map(([x,y],i)=> (i?'L':'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ');
+  const area = `M${pts[0][0].toFixed(1)} ${H-padB} ` +
+    pts.map(([x,y])=>`L${x.toFixed(1)} ${y.toFixed(1)}`).join(' ') +
+    ` L${pts[pts.length-1][0].toFixed(1)} ${H-padB} Z`;
+  const grid = [0,.5,1].map(fr=>{
+    const y = padT + (H-padB-padT)*fr;
+    return `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--rule-soft)" stroke-width="1"/>`;
+  }).join('');
+  const dotsG = pts.map(([x,y])=>`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6"
+      fill="var(--paper)" stroke="var(--accent)" stroke-width="1.6"/>`).join('');
+  document.getElementById('growth').innerHTML = `
+    <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/>
+      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${grid}
+    <path d="${area}" fill="url(#ga)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round"/>
+    ${dotsG}
+    <line x1="0" y1="${H-padB}" x2="${W}" y2="${H-padB}" stroke="var(--rule)" stroke-width="1"/>`;
+  document.getElementById('growthAxis').innerHTML =
+    `<span>${dly[0]?dly[0].day:''}</span><span>peak ${gmax}/day</span>
+     <span>${dly.length?dly[dly.length-1].day:''}</span>`;
+
+  // ---- hardware mix
+  const tiers = Object.entries(d.stats.tiers);
+  const tsum = tiers.reduce((a,[,v])=>a+v,0);
+  document.getElementById('mixTotal').textContent = f(tsum) + ' nodes';
+  document.getElementById('mixHint').textContent = tiers.length + ' classes';
+  document.getElementById('mixbar').innerHTML = tiers.map(([k,v],i)=>
+    `<div style="flex:${v} 0 0;background:${k==='cpu'?'var(--ink-3)':tierColor(i)}"
+       title="${k==='cpu'?'CPU only':k+' GB'}: ${v}"></div>`).join('');
+  document.getElementById('legend').innerHTML = tiers.map(([k,v],i)=>`
+    <div class="leg"><i style="background:${k==='cpu'?'var(--ink-3)':tierColor(i)}"></i>
+      <span>${k==='cpu'?'CPU only':k+' GB'}</span><b>${v}</b></div>`).join('');
+
+  // ---- tables
+  document.getElementById('models').innerHTML = (d.stats.models||[]).map(m=>`
+    <tr><td class="name">${m.name||'no GPU'}</td>
+      <td class="r">${f(m.count)}</td>
+      <td class="r mut">${f(m.online)}</td>
+      <td class="r mut">${m.vram?m.vram+' GB':'—'}</td>
+      <td class="r mut"><span class="sharebar"><i style="width:${100*m.count/Math.max(t.installs,1)}%"></i></span>${Math.round(100*m.count/Math.max(t.installs,1))}%</td></tr>`).join('');
+
+  const now = d.stats.generated_at;
+  document.getElementById('recentHint').textContent = d.nodes.length + ' most recent';
+  document.getElementById('nodes').innerHTML = (d.nodes||[]).slice(0,14).map(n=>{
+    const age = now - n.last_seen;
+    const st = age < 180 ? (n.status==='training'?'busy':'on') : 'off';
+    return `<tr>
+      <td class="mono" style="font-size:11px">${(n.node_id||'').slice(0,8)}</td>
+      <td class="mut">${n.os||'—'} ${n.os_version||''}</td>
+      <td>${(n.gpu_name||'no GPU').replace('NVIDIA GeForce ','')}</td>
+      <td class="r">${n.gpu_vram_gb?n.gpu_vram_gb+' GB':'—'}</td>
+      <td class="r mut">${n.ram_total_gb?Math.round(n.ram_total_gb)+' GB':'—'}</td>
+      <td class="r mut">${n.disk_free_gb?Math.round(n.disk_free_gb)+' GB':'—'}</td>
+      <td class="mut">${n.city||'—'}</td>
+      <td class="r mut">${ago(age)}</td>
+      <td><span class="pill ${st}"><i></i>${st==='busy'?'training':st==='on'?'online':'offline'}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('stamp').textContent =
+    'captured ' + new Date(d.stats.generated_at*1000)
+      .toLocaleString('en-IN',{hour12:false}).replace(',','');
+}
+
+async function load(manual){
+  try{
+    const g = async u => (await fetch(u,{cache:'no-store'})).json();
+    const [stats, nodes, ...caps] = await Promise.all([
+      g('/api/v1/stats'), g('/api/v1/nodes?limit=30'),
+      ...[0.3,0.5,1.2,3,8,70].map(s=>g(`/api/v1/capacity?params=${s}&mode=full`))
+    ]);
+    const sizes = [0.3,0.5,1.2,3,8,70];
+    DATA = {
+      stats,
+      nodes: nodes.nodes,
+      ladder: caps.map((c,i)=>({size:sizes[i], label:sizes[i]+'B', mode:'full',
+        replicas:c.replicas, excluded:c.excluded, tps:c.tokens_per_s, eta_days:c.eta_days}))
+    };
+    live = true;
+    document.getElementById('liveTxt').textContent = 'live';
+    document.getElementById('live').classList.remove('stale');
+  }catch(e){
+    if (live || manual){
+      document.getElementById('liveTxt').textContent = 'offline';
+      document.getElementById('live').classList.add('stale');
+    }
+    live = false;
+  }
+  render(DATA);
+}
+
+render(DATA);
+load(false);
+setInterval(()=>load(false), 5000);
+setInterval(()=>{document.getElementById('clock').textContent =
+  new Date().toLocaleTimeString('en-IN',{hour12:false}) + ' IST';}, 1000);
+</script>
+</body>
+</html>
