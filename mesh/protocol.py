@@ -9,6 +9,18 @@ import torch
 
 HEADER = struct.Struct("!II")   # (header length, payload length)
 
+# Frame sizes are attacker-controlled: a peer that announces a 4 GB payload
+# used to get that much memory allocated before anything was validated.
+MAX_HEADER = 64 * 1024              # JSON control messages
+MAX_PAYLOAD = 256 * 1024 * 1024     # compressed weight deltas
+
+
+def _check_lengths(hl: int, pl: int) -> None:
+    if hl > MAX_HEADER:
+        raise ValueError(f"header too large: {hl} > {MAX_HEADER}")
+    if pl > MAX_PAYLOAD:
+        raise ValueError(f"payload too large: {pl} > {MAX_PAYLOAD}")
+
 
 # ---------------------------------------------------------------- framing
 def pack_msg(header: dict, payload: bytes = b"") -> bytes:
@@ -18,6 +30,7 @@ def pack_msg(header: dict, payload: bytes = b"") -> bytes:
 
 def unpack_header(buf: bytes) -> tuple[dict, int, int]:
     hl, pl = HEADER.unpack(buf[:8])
+    _check_lengths(hl, pl)
     return json.loads(buf[8:8 + hl]), hl, pl
 
 
@@ -37,6 +50,7 @@ def _recv_exact(sock, n: int) -> bytes:
 
 def recv_msg(sock) -> tuple[dict, bytes]:
     hl, pl = HEADER.unpack(_recv_exact(sock, 8))
+    _check_lengths(hl, pl)
     header = json.loads(_recv_exact(sock, hl))
     payload = _recv_exact(sock, pl) if pl else b""
     return header, payload
@@ -50,6 +64,7 @@ async def asend(writer, header: dict, payload: bytes = b"") -> None:
 async def arecv(reader) -> tuple[dict, bytes]:
     head = await reader.readexactly(8)
     hl, pl = HEADER.unpack(head)
+    _check_lengths(hl, pl)
     header = json.loads(await reader.readexactly(hl))
     payload = await reader.readexactly(pl) if pl else b""
     return header, payload

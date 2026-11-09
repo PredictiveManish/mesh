@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -51,6 +52,10 @@ class Registry:
         self.path = str(path)
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        # ThreadingHTTPServer means many threads share this connection; without
+        # a lock and WAL a real fleet produces "database is locked".
+        self._lock = threading.Lock()
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         self.db.commit()
 
@@ -62,12 +67,13 @@ class Registry:
         cols = list(row)
         vals = list(row.values())
         placeholders = ",".join("?" * len(cols))
-        self.db.execute(
-            f"INSERT INTO nodes ({','.join(cols)}) VALUES ({placeholders}) "
-            f"ON CONFLICT(node_id) DO UPDATE SET "
-            + ",".join(f"{c}=excluded.{c}" for c in cols if c != "node_id"),
-            vals)
-        self.db.commit()
+        with self._lock:
+            self.db.execute(
+                f"INSERT INTO nodes ({','.join(cols)}) VALUES ({placeholders}) "
+                f"ON CONFLICT(node_id) DO UPDATE SET "
+                + ",".join(f"{c}=excluded.{c}" for c in cols if c != "node_id"),
+                vals)
+            self.db.commit()
 
     def heartbeat(self, node_id: str, patch: dict) -> bool:
         patch = dict(patch)
@@ -75,15 +81,15 @@ class Registry:
         allowed = [c for c in patch if c in FIELDS]
         if not allowed:
             return False
-        self.db.execute(
-            f"UPDATE nodes SET {','.join(f'{c}=?' for c in allowed)} WHERE node_id=?",
-            [patch[c] for c in allowed] + [node_id])
-        self.db.commit()
-        if "ram_available_gb" in patch:
+        with self._lock:
             self.db.execute(
-                "INSERT INTO samples VALUES (?,?,?,?,?,?)",
-                (node_id, time.time(), patch.get("ram_available_gb"),
-                 patch.get("gpu_util"), patch.get("gpu_temp_c"), patch.get("power_w")))
+                f"UPDATE nodes SET {','.join(f'{c}=?' for c in allowed)} WHERE node_id=?",
+                [patch[c] for c in allowed] + [node_id])
+            if "ram_available_gb" in patch:
+                self.db.execute(
+                    "INSERT INTO samples VALUES (?,?,?,?,?,?)",
+                    (node_id, time.time(), patch.get("ram_available_gb"),
+                     patch.get("gpu_util"), patch.get("gpu_temp_c"), patch.get("power_w")))
             self.db.commit()
         return True
 

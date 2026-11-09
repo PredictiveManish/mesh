@@ -143,6 +143,26 @@ or IP is stored. Location is opt-in, city-level and rounded to about 1 km; the
 fields are absent entirely unless the user consents. Enforced in code, with
 tests.
 
+## Security
+
+The telemetry API and the training socket both accept input from the network.
+
+- **Set a token.** `mesh serve --token <secret>` (or `MESH_TOKEN`) is required
+  on anything other than loopback. Without it anyone who can reach the port
+  can register a node, post telemetry, or join a training ring. The server
+  prints a warning when it binds a public interface with no token.
+- **Frame limits.** Control messages are capped at 64 KB and weight deltas at
+  256 MB, checked before anything is allocated. A peer announcing a 4 GB
+  payload used to get it.
+- **Body limit.** Telemetry reports are capped at 1 MB, and a malformed
+  `Content-Length` is a 400 rather than an unhandled exception.
+- **Dashboard escaping.** Every node-supplied string is escaped before it
+  reaches the page; it was interpolated into `innerHTML`.
+- **Container.** The image runs as an unprivileged user (`mesh`, uid 1000).
+
+`docs/PRODUCTION-READINESS.md` lists what is still missing for a real
+deployment, including TLS on the socket.
+
 ## Documentation
 
 - [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md) — the honest gap between this and a product

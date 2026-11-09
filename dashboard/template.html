@@ -289,6 +289,11 @@ const ago = s => s<60 ? Math.round(s)+'s' : s<3600 ? Math.round(s/60)+'m'
               : s<86400 ? Math.round(s/3600)+'h' : Math.round(s/86400)+'d';
 const rate = n => n>=1e6 ? (n/1e6).toFixed(1)+'M tok/s'
               : n>=1e3 ? Math.round(n/1e3)+'k tok/s' : Math.round(n)+' tok/s';
+// Everything a node reports is untrusted text. Interpolating it into
+// innerHTML let a hostile node run script in the operator's dashboard, which
+// is the same origin that holds the token.
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const TIER_COLORS = ['#a83c1d','#c2683f','#d99662','#b9a882','#8a8272','#4b463c'];
 const tierColor = i => TIER_COLORS[Math.min(i, TIER_COLORS.length-1)];
@@ -325,7 +330,7 @@ function render(d){
     const dead = r.replicas === 0;
     const w = dead ? 0 : Math.max(1.2, 100*r.replicas/lmax);
     return `<div class="row ${dead?'dead':''}">
-      <div class="sz">${r.label}</div>
+      <div class="sz">${esc(r.label)}</div>
       <div class="track"><div class="bar ${dead?'zero':''}" style="width:${w}%"></div></div>
       <div class="val">${dead?'0':f(r.replicas)}
         <small>${dead?'none fit':rate(r.tps)}</small></div>
@@ -378,7 +383,7 @@ function render(d){
   document.getElementById('geoHint').textContent =
     `${t.consented_location}/${t.installs} consented`;
   document.getElementById('cities').innerHTML = cities.slice(0,8).map(c=>`
-    <div class="city"><span>${c.city}</span>
+    <div class="city"><span>${esc(c.city)}</span>
       <b>${c.count}<em>${c.online} on</em></b></div>`).join('');
 
   // ---- growth
@@ -445,13 +450,13 @@ function render(d){
     const age = now - n.last_seen;
     const st = age < 180 ? (n.status==='training'?'busy':'on') : 'off';
     return `<tr>
-      <td class="mono" style="font-size:11px">${(n.node_id||'').slice(0,8)}</td>
-      <td class="mut">${n.os||'—'} ${n.os_version||''}</td>
-      <td>${(n.gpu_name||'no GPU').replace('NVIDIA GeForce ','')}</td>
+      <td class="mono" style="font-size:11px">${esc((n.node_id||'').slice(0,8))}</td>
+      <td class="mut">${esc(n.os||'—')} ${esc(n.os_version||'')}</td>
+      <td>${esc((n.gpu_name||'no GPU').replace('NVIDIA GeForce ',''))}</td>
       <td class="r">${n.gpu_vram_gb?n.gpu_vram_gb+' GB':'—'}</td>
       <td class="r mut">${n.ram_total_gb?Math.round(n.ram_total_gb)+' GB':'—'}</td>
       <td class="r mut">${n.disk_free_gb?Math.round(n.disk_free_gb)+' GB':'—'}</td>
-      <td class="mut">${n.city||'—'}</td>
+      <td class="mut">${esc(n.city||'—')}</td>
       <td class="r mut">${ago(age)}</td>
       <td><span class="pill ${st}"><i></i>${st==='busy'?'training':st==='on'?'online':'offline'}</span></td>
     </tr>`;

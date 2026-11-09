@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,6 +13,21 @@ from .registry import Registry
 from .types import JobSpec
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
+
+# Node reports are a few hundred bytes; a megabyte is already generous.
+MAX_BODY_BYTES = 1024 * 1024
+MAX_LIMIT = 500
+# The dashboard is served from this origin, so cross-origin access is off
+# unless an operator asks for it explicitly.
+CORS_ORIGIN = os.environ.get("MESH_CORS_ORIGIN", "")
+
+
+def _clamp(value, default, maximum):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(parsed, maximum))
 
 
 def make_handler(reg: Registry, token: str, dashboard: Path):
@@ -28,7 +44,8 @@ def make_handler(reg: Registry, token: str, dashboard: Path):
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            if CORS_ORIGIN:
+                self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
             self.end_headers()
             self.wfile.write(body)
 
@@ -48,14 +65,29 @@ def make_handler(reg: Registry, token: str, dashboard: Path):
                 return True
             return self.headers.get("X-Mesh-Token", "") == token
 
-        def _body(self) -> dict:
-            n = int(self.headers.get("Content-Length", 0))
-            if not n:
+        def _body(self):
+            """Read a JSON body, or respond and return None.
+
+            Content-Length is attacker-controlled: a large value used to be
+            read into memory in one go, and a non-numeric one raised an
+            uncaught ValueError.
+            """
+            raw_length = self.headers.get("Content-Length", "0")
+            try:
+                n = int(raw_length or 0)
+            except (TypeError, ValueError):
+                self._json({"error": "invalid Content-Length"}, 400)
+                return None
+            if n <= 0:
                 return {}
+            if n > MAX_BODY_BYTES:
+                self._json({"error": f"body exceeds {MAX_BODY_BYTES} bytes"}, 413)
+                return None
             try:
                 return json.loads(self.rfile.read(n))
             except Exception:
-                return {}
+                self._json({"error": "body is not valid JSON"}, 400)
+                return None
 
         # ------------------------------------------------------------- GET
         def do_GET(self):
@@ -69,7 +101,7 @@ def make_handler(reg: Registry, token: str, dashboard: Path):
                 return self._json(reg.stats())
             if u.path == "/api/v1/nodes":
                 q = parse_qs(u.query)
-                limit = int(q.get("limit", ["40"])[0])
+                limit = _clamp(q.get("limit", ["40"])[0], 40, MAX_LIMIT)
                 return self._json({"nodes": reg.recent(limit)})
             if u.path == "/api/v1/capacity":
                 q = parse_qs(u.query)
@@ -101,6 +133,8 @@ def make_handler(reg: Registry, token: str, dashboard: Path):
             if not self._authorised():
                 return self._json({"error": "unauthorised"}, 401)
             body = self._body()
+            if body is None:
+                return
             if u.path == "/api/v1/nodes":
                 if not body.get("node_id"):
                     return self._json({"error": "node_id required"}, 400)
