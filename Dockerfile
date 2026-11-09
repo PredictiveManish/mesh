@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+# Run as a non-root user; the container needs nothing privileged.
+RUN useradd -m -u 1000 mesh && mkdir -p /data && chown mesh:mesh /data
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY mesh ./mesh
@@ -14,5 +16,7 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health')" || exit 1
+
+USER mesh
 
 CMD ["mesh", "serve", "--host", "0.0.0.0", "--port", "8080", "--db", "/data/mesh_fleet.db"]

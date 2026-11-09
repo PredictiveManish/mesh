@@ -7,6 +7,7 @@ coordinator only sequences rounds -- see docs/PRODUCTION-READINESS.md.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import time
 
 import torch
@@ -40,7 +41,7 @@ class Coordinator:
     def __init__(self, host: str = "127.0.0.1", port: int = 0, rounds: int = 20,
                  H: int = 12, compression: str = "int8", lr: float = 1.0,
                  beta: float = 0.9, timeout: float = 30.0, microbatch: int = 4,
-                 verbose: bool = True):
+                 verbose: bool = True, token: str = ""):
         self.host, self.port = host, port
         self.rounds, self.H = rounds, H
         self.compression = compression
@@ -48,6 +49,9 @@ class Coordinator:
         self.timeout = timeout
         self.microbatch = microbatch
         self.verbose = verbose
+        # Shared secret for the training socket. Empty means the ring is open,
+        # which is only acceptable on loopback.
+        self.token = token
 
         self.model = M.build()
         self.state = {k: v.clone() for k, v in self.model.state_dict().items()}
@@ -73,6 +77,11 @@ class Coordinator:
             header, _ = await P.arecv(reader)
             if header.get("type") != "register":
                 await P.asend(writer, {"type": "error", "msg": "expected register"})
+                return
+            if self.token and not hmac.compare_digest(
+                    str(header.get("token", "")), self.token):
+                await P.asend(writer, {"type": "error", "msg": "unauthorised"})
+                writer.close()
                 return
             node_id = header["node_id"]
             profile = NodeProfile.from_dict(header.get("profile", {"node_id": node_id}))

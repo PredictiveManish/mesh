@@ -54,6 +54,7 @@ def run(args) -> int:
     sock.settimeout(300)
 
     P.send_msg(sock, {"type": "register", "node_id": args.worker_id,
+                      "token": getattr(args, "token", ""),
                       "profile": profile.to_dict()})
     header, _ = P.recv_msg(sock)
     if header.get("type") != "welcome":
@@ -116,6 +117,8 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--worker-id", default="worker-0")
+    ap.add_argument("--token", default=os.getenv("MESH_TOKEN", ""),
+                    help="shared secret for the coordinator socket")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--byzantine", default="", choices=["", "noise", "subtle"])

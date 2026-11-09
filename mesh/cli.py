@@ -91,6 +91,7 @@ async def _run_async(args) -> dict:
         port=args.port, rounds=args.rounds, H=args.H,
         compression=args.compression, timeout=args.timeout,
         microbatch=args.microbatch, verbose=not args.quiet,
+        token=getattr(args, "token", "") or os.getenv("MESH_TOKEN", ""),
     )
     port = await coord.start()
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -112,6 +113,8 @@ async def _run_async(args) -> dict:
         cmd = [sys.executable, "-m", "mesh.worker", "--port", str(port),
                "--worker-id", f"w{i}", "--workers", str(args.workers),
                "--byzantine", byz, "--lr", str(args.lr)]
+        if getattr(args, "token", "") or os.getenv("MESH_TOKEN", ""):
+            cmd += ["--token", getattr(args, "token", "") or os.getenv("MESH_TOKEN", "")]
         procs.append(subprocess.Popen(
             cmd, env=env, cwd=root,
             stdout=None if not args.quiet else subprocess.DEVNULL,
@@ -266,6 +269,11 @@ def cmd_up(args) -> int:
     from .registry import Registry
     from .server import make_handler
 
+    if not args.token and args.host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"  WARNING: binding {args.host} with no --token. Anyone who can\n"
+              f"           reach this port can register a node and post telemetry.\n"
+              f"           Set --token or MESH_TOKEN.\n", file=sys.stderr)
+
     reg = Registry(args.db)
     handler = make_handler(reg, args.token,
                            Path(args.dashboard) if args.dashboard else DASHBOARD_PATH)
@@ -334,6 +342,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="run a real distributed training round-trip")
     r.add_argument("--workers", type=int, default=4)
+    r.add_argument("--token", default=os.getenv("MESH_TOKEN", ""),
+                   help="shared secret for the coordinator socket")
     r.add_argument("--rounds", type=int, default=20)
     r.add_argument("--H", type=int, default=12, help="inner steps per round")
     r.add_argument("--microbatch", type=int, default=4)
